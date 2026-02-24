@@ -317,6 +317,7 @@ def create_kernel_spec(
     scales: list[list[int]],
     op_info: dict[str, Any],
 ) -> KernelSpec:
+    print("op_info", op_info)
     for arg in args:
         if arg.dtype == torch.float32 and op not in SPYRE_FP32_OPS:
             raise Unsupported(f"{op} on {arg.dtype} dtype")
