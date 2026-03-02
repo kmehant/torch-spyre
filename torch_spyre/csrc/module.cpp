@@ -107,7 +107,7 @@ void launchKernel(std::string g2_path, std::vector<at::Tensor> args) {
   DEBUGINFO("deserialize done");
   DEBUGINFO("g2.compute_ops_", g2.compute_ops_)
 
-  DEBUGINFO("for loop start")
+  DEBUGINFO("for loop start");
   for (auto &super_node : g2.compute_ops_) {
     if (super_node->Name() != "DeviceInit" &&
         super_node->Name() != "PrepareModel") {
@@ -151,23 +151,31 @@ void launchKernel(std::string g2_path, std::vector<at::Tensor> args) {
     }
   }
 
-  DEBUGINFO("for loop end")
+  DEBUGINFO("for loop end");
   // Load/parse patched G2 graph
+  DEBUGINFO("graph load");
   auto status = gl.LoadGraph(g2, false);
   if (!status.IsOk()) throw std::runtime_error(status.Message());
+  DEBUGINFO("graph load end");
 
+  DEBUGINFO("graph compile start");
   status = gl.CompileGraph();
   if (!status.IsOk()) throw std::runtime_error(status.Message());
+  DEBUGINFO("graph compile done");
 
+  DEBUGINFO("graph parse start");
   status = gl.ParseGraph();
   if (!status.IsOk()) throw std::runtime_error(status.Message());
-
+  DEBUGINFO("graph parse end");
   // Create sendnn tensors
   std::vector<sendnn::ConstTensor> sen_inputs;
   std::vector<sendnn::Tensor> sen_outputs;
+
+  DEBUGINFO("args", args);
   for (size_t i = 0; i < args.size() - 1; ++i) {
     auto arg = args[i];
     at::Tensor tmp_0;
+    DEBUGINFO("create input tensor for arg", arg, arg.dim());
     if (arg.dim() == 0) {
       tmp_0 = (at::ones({1}, arg.dtype()) * arg).to(arg.device());
       auto tensor = createInputTensor(gl, tmp_0.storage().data_ptr().get(), i,
@@ -179,9 +187,11 @@ void launchKernel(std::string g2_path, std::vector<at::Tensor> args) {
     } else {
       auto tensor = createInputTensor(gl, arg.storage().data_ptr().get(), i,
                                       (args.size() >= 3) ? 2 : 1);
+      DEBUGINFO("set spyre data");
       tensor.SetSpyreData(
           static_cast<SharedOwnerCtx *>(arg.storage().data_ptr().get_context())
               ->owner);
+      DEBUGINFO("set spyre data done");
       sen_inputs.push_back(tensor);
     }
   }
