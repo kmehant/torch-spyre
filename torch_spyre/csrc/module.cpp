@@ -93,13 +93,21 @@ void freeRuntime() {
   GlobalRuntime::reset();
 }
 void launchKernel(std::string g2_path, std::vector<at::Tensor> args) {
+  DEBUGINFO("GraphLoader init");
   // Get global runtime from eager
   auto gl = sendnn::GraphLoader(GlobalRuntime::get());
-
+  DEBUGINFO("GraphLoader init done");
   // Load compiled kernel
+  DEBUGINFO("compiled kernel load start");
   auto g2 = sendnn::Graph();
-  sendnn::Deserialize(&g2, g2_path);
+  DEBUGINFO("compiled kernel load done");
 
+  DEBUGINFO("deserialize start");
+  sendnn::Deserialize(&g2, g2_path);
+  DEBUGINFO("deserialize done");
+  DEBUGINFO("g2.compute_ops_", g2.compute_ops_)
+
+  DEBUGINFO("for loop start")
   for (auto &super_node : g2.compute_ops_) {
     if (super_node->Name() != "DeviceInit" &&
         super_node->Name() != "PrepareModel") {
@@ -143,6 +151,7 @@ void launchKernel(std::string g2_path, std::vector<at::Tensor> args) {
     }
   }
 
+  DEBUGINFO("for loop end")
   // Load/parse patched G2 graph
   auto status = gl.LoadGraph(g2, false);
   if (!status.IsOk()) throw std::runtime_error(status.Message());
