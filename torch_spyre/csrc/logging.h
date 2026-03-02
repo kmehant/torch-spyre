@@ -55,14 +55,14 @@ class SuppressDebugLog {
 
 #define DEBUGINFO(...)                                                   \
   do {                                                                   \
-    if (g_debug_info_enabled) {                                          \
+    if (!g_debug_info_enabled) {                                         \
       ::spyre::detail::PrintLog(true, "[", __func__, "] ", __VA_ARGS__); \
     }                                                                    \
   } while (0);
 
 #define DEBUGINFO_NO_ENDL(...)                                            \
   do {                                                                    \
-    if (g_debug_info_enabled) {                                           \
+    if (!g_debug_info_enabled) {                                          \
       ::spyre::detail::PrintLog(false, "[", __func__, "] ", __VA_ARGS__); \
     }                                                                     \
   } while (0);
