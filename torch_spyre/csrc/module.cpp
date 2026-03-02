@@ -217,11 +217,15 @@ void launchKernel(std::string g2_path, std::vector<at::Tensor> args) {
     status = gl.Compute(sen_outputs, sen_inputs, 2);
     if (!status.IsOk()) throw std::runtime_error(status.Message());
   } else if (args.size() >= 3) {
+    DEBUGINFO("predict start");
     status = gl.Predict(sendnn::Outputs(), {sen_inputs[1]}, 1);
+    DEBUGINFO("predict end");
     if (!status.IsOk()) throw std::runtime_error(status.Message());
-
+    DEBUGINFO("compute start");
     status = gl.Compute(sen_outputs, sen_inputs, 2);
+    DEBUGINFO("compute end");
     if (!status.IsOk()) throw std::runtime_error(status.Message());
+    DEBUGINFO("compute check end");
   } else {
     status = gl.Predict(sendnn::Outputs(), sendnn::Inputs(), 0);
     if (!status.IsOk()) throw std::runtime_error(status.Message());
