@@ -521,6 +521,10 @@ at::Tensor spyre_empty(c10::IntArrayRef size,
               "Non strided layout not supported");
   TORCH_CHECK(!c10::pinned_memory_or_default(pin_memory_opt),
               "Pin memory can only be on CPU");
+  TORCH_CHECK(
+      dtype == c10::kHalf || dtype == c10::kFloat,
+      "Spyre backend does not support dtype ", dtype,
+      ". Supported dtypes are: float16, float32.");
   const c10::DeviceGuard device_guard(device);
 
   auto device_layout = SpyreTensorLayout(size.vec(), dtype);
@@ -556,6 +560,10 @@ at::Tensor spyre_empty_strided(c10::IntArrayRef size, c10::IntArrayRef stride,
   // SETUP FOR Spyre TENSOR
   at::detail::check_size_nonnegative(size);
   const auto scalar_type = c10::dtype_or_default(dtype_opt);
+  TORCH_CHECK(
+      scalar_type == c10::kHalf || scalar_type == c10::kFloat,
+      "Spyre backend does not support dtype ", scalar_type,
+      ". Supported dtypes are: float16, float32.");
   caffe2::TypeMeta dtype = c10::scalarTypeToTypeMeta(scalar_type);
   c10::Device device = device_opt.value_or(
       c10::impl::VirtualGuardImpl{c10::DeviceType::PrivateUse1}.getDevice());
@@ -715,6 +723,10 @@ at::Tensor empty_with_layout(
               "Non strided layout not supported");
   TORCH_CHECK(!c10::pinned_memory_or_default(pin_memory_opt),
               "Pin memory can only be on CPU");
+  TORCH_CHECK(
+      dtype == c10::kHalf || dtype == c10::kFloat,
+      "Spyre backend does not support dtype ", dtype,
+      ". Supported dtypes are: float16, float32.");
   const c10::DeviceGuard device_guard(device);
 
   size_t size_bytes = get_device_size_in_bytes(device_layout);
