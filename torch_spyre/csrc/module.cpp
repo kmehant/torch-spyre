@@ -193,15 +193,21 @@ void launchKernel(std::string g2_path, std::vector<at::Tensor> args) {
               ->owner);
       DEBUGINFO("set spyre data done");
       sen_inputs.push_back(tensor);
+      DEBUGINFO("set inputs push back done");
     }
   }
+  DEBUGINFO("create output tensor");
   auto tensor = createOutputTensor(gl, args.back().storage().data_ptr().get(),
                                    0, (args.size() >= 3) ? 2 : 1);
+  DEBUGINFO("create output tensor done");
+  DEBUGINFO("output tensor spyre data");
   tensor.SetSpyreData(static_cast<SharedOwnerCtx *>(
                           args.back().storage().data_ptr().get_context())
                           ->owner);
+  DEBUGINFO("set output tensor spyre data done");
   sen_outputs.push_back(tensor);
-
+  DEBUGINFO("push back output tensor");
+  DEBUGINFO("args.size()", args.size());
   // Execute device init
   if (args.size() == 6) {
     // Filling in segment 5 adds another input to the device init supernode
