@@ -171,11 +171,11 @@ void launchKernel(std::string g2_path, std::vector<at::Tensor> args) {
   std::vector<sendnn::ConstTensor> sen_inputs;
   std::vector<sendnn::Tensor> sen_outputs;
 
-  DEBUGINFO("args", args);
+  // DEBUGINFO("args", args);
   for (size_t i = 0; i < args.size() - 1; ++i) {
     auto arg = args[i];
     at::Tensor tmp_0;
-    DEBUGINFO("create input tensor for arg", arg, arg.dim());
+    DEBUGINFO("create input tensor for arg");
     if (arg.dim() == 0) {
       tmp_0 = (at::ones({1}, arg.dtype()) * arg).to(arg.device());
       auto tensor = createInputTensor(gl, tmp_0.storage().data_ptr().get(), i,
