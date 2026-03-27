@@ -124,6 +124,10 @@ LIBRARIES = ["sendnn", "sendnn_interface", "flex"]
 # Set TORCH_SPYRE_DEBUG=1 to build with -O0 for easier debugging
 NO_OPT_BUILD = os.environ.get("TORCH_SPYRE_DEBUG", "0") == "1"
 
+# MAX_JOBS controls parallelism within a extension through ninja's -j flag
+# also defines parallelism across extensions through self.parallel setuptools parameter
+MAX_JOBS = os.environ.get("MAX_JOBS", "1")
+
 EXTRA_CXX_FLAGS = ["-g", "-Wall", "-Wno-deprecated", "-std=c++17"]
 if NO_OPT_BUILD:
     EXTRA_CXX_FLAGS += ["-O0"]
@@ -259,6 +263,7 @@ if __name__ == "__main__":
         class PermanentBuildExtension(_BuildExtension):
             def finalize_options(self):
                 super().finalize_options()
+                self.parallel = int(MAX_JOBS)
                 self.build_temp = str(BUILD_DIR)
 
             def build_extension(self, ext):
