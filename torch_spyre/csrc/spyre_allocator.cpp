@@ -179,6 +179,10 @@ void SpyreAllocator::copy_data(void* dest, const void* src,
 // Register our custom allocator
 REGISTER_ALLOCATOR(c10::DeviceType::PrivateUse1, &SpyreAllocator::instance());
 
+void register_allocator() {
+  SpyreAllocator::instance();
+}
+
 // Debug function to check what allocator is registered
 void check_registered_allocator() {
   auto* alloc = c10::GetAllocator(c10::DeviceType::PrivateUse1);

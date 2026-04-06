@@ -414,7 +414,8 @@ PYBIND11_MODULE(_C, m) {
                std::to_string(stream.device().index()) +
                " id=" + std::to_string(stream.id()) + ">";
       });
-
+  m.def("register_allocator", &spyre::register_allocator,
+        "Register the allocator");
   m.def("check_registered_allocator", &spyre::check_registered_allocator,
         "Debug: Check what allocator is registered for PrivateUse1 device");
 }

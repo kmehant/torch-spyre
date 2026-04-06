@@ -72,4 +72,6 @@ struct SpyreAllocator final : public c10::DeviceAllocator {
 
 void check_registered_allocator();
 
+void register_allocator();
+
 }  // namespace spyre

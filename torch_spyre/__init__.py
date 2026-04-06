@@ -219,7 +219,9 @@ def _autoload():
 
     import torch  # noqa: E402
     from . import _hooks  # noqa: F401
+    from torch_spyre import _C
 
+    _C.register_allocator()
     # Set all the appropriate state on PyTorch
     torch.utils.rename_privateuse1_backend(DEVICE_NAME)
     torch._register_device_module(DEVICE_NAME, make_spyre_module())
