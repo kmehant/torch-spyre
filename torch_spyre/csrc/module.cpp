@@ -413,4 +413,6 @@ PYBIND11_MODULE(_C, m) {
                std::to_string(stream.device().index()) +
                " id=" + std::to_string(stream.id()) + ">";
       });
+  m.def("register_allocator", &spyre::register_allocator,
+        "Register the allocator");
 }

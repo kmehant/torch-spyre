@@ -177,4 +177,8 @@ void SpyreAllocator::copy_data(void* dest, const void* src,
 // Register our custom allocator
 REGISTER_ALLOCATOR(c10::DeviceType::PrivateUse1, &SpyreAllocator::instance());
 
+void register_allocator() {
+  SpyreAllocator::instance();
+}
+
 }  // namespace spyre
