@@ -70,4 +70,6 @@ struct SpyreAllocator final : public c10::DeviceAllocator {
   void copy_data(void* dest, const void* src, std::size_t count) const final;
 };
 
+void check_registered_allocator();
+
 }  // namespace spyre

@@ -15,6 +15,8 @@
  */
 #include "spyre_allocator.h"
 
+#include <c10/util/Logging.h>
+
 #include <utility>
 
 #include "logging.h"
@@ -176,5 +178,28 @@ void SpyreAllocator::copy_data(void* dest, const void* src,
 
 // Register our custom allocator
 REGISTER_ALLOCATOR(c10::DeviceType::PrivateUse1, &SpyreAllocator::instance());
+
+// Debug function to check what allocator is registered
+void check_registered_allocator() {
+  auto* alloc = c10::GetAllocator(c10::DeviceType::PrivateUse1);
+  auto& spyre_alloc = SpyreAllocator::instance();
+
+  // Check if it's a DeviceAllocator
+  auto* device_alloc = dynamic_cast<c10::DeviceAllocator*>(alloc);
+  if (device_alloc) {
+    TORCH_WARN("Allocator is a DeviceAllocator at ", device_alloc);
+  } else {
+    TORCH_WARN("Allocator is NOT a DeviceAllocator, type: ",
+               typeid(*alloc).name());
+  }
+
+  if (alloc == &spyre_alloc) {
+    TORCH_WARN("SpyreAllocator is registered for PrivateUse1 at ",
+               &spyre_alloc);
+  } else {
+    TORCH_WARN("Different allocator registered for PrivateUse1: ", alloc,
+               " (SpyreAllocator at: ", &spyre_alloc, ")");
+  }
+}
 
 }  // namespace spyre

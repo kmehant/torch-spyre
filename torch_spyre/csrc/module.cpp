@@ -74,6 +74,7 @@ static void init_from_env() {
 
 void _startRuntime() {
   DEBUGINFO("starting runtime");
+  check_registered_allocator();
   std::shared_ptr<Runtime> runtime;
   auto s = flex::initializeRuntime(&runtime);
   init_from_env();
@@ -413,4 +414,7 @@ PYBIND11_MODULE(_C, m) {
                std::to_string(stream.device().index()) +
                " id=" + std::to_string(stream.id()) + ">";
       });
+
+  m.def("check_registered_allocator", &spyre::check_registered_allocator,
+        "Debug: Check what allocator is registered for PrivateUse1 device");
 }
