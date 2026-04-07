@@ -60,5 +60,8 @@ void startRuntime();
 
 // Check if the Spyre runtime has been successfully initialized.
 // Used by isAvailable() to determine if device operations are feasible.
-bool isRuntimeReady();
+// Defined as inline so it can be used from _hooks.so and _C.so.
+inline bool isRuntimeReady() {
+  return GlobalRuntime::get() != nullptr;
+}
 }  // namespace spyre
