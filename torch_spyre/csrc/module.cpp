@@ -93,6 +93,10 @@ void startRuntime() {
 void freeRuntime() {
   GlobalRuntime::reset();
 }
+
+bool isRuntimeReady() {
+  return GlobalRuntime::get() != nullptr;
+}
 void launchKernel(std::string g2_path, std::vector<at::Tensor> args) {
   // Get global runtime from eager
   auto gl = sendnn::GraphLoader(GlobalRuntime::get());

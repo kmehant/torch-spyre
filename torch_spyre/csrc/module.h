@@ -57,4 +57,8 @@ bool is_supported_dtype(c10::ScalarType dtype);
 
 int device_count();
 void startRuntime();
+
+// Check if the Spyre runtime has been successfully initialized.
+// Used by isAvailable() to determine if device operations are feasible.
+bool isRuntimeReady();
 }  // namespace spyre

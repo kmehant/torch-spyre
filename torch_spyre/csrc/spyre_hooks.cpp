@@ -19,6 +19,8 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
+#include "module.h"
+
 namespace py = pybind11;
 
 namespace spyre {
@@ -34,10 +36,10 @@ struct SpyreHooksInterface : public at::PrivateUse1HooksInterface {
   ~SpyreHooksInterface() override = default;
 
   bool hasPrimaryContext(c10::DeviceIndex device_index) const override {
-    return true;
+    return isRuntimeReady();
   }
   bool isAvailable() const override {
-    return true;
+    return isRuntimeReady();
   }
 };
 
