@@ -120,7 +120,9 @@ std::vector<SpyreDeviceInfo> buildDeviceList() {
   // Priority:
   //   1. SPYRE_VISIBLE_DEVICES — explicit user/admin override
   //   2. PCIDEVICE_IBM_COM_AIU_PF — set by K8s device plugin
-  //   3. Full PCI bus scan
+  //   3. If PCIDEVICE_IBM_COM_AIU_PF not set:
+  //      - AIU_WORLD_SIZE > 0: Full PCI bus scan
+  //      - AIU_WORLD_SIZE == 0 or unset: empty list
   const char* env = std::getenv("SPYRE_VISIBLE_DEVICES");
   const char* k8s_env = std::getenv("PCIDEVICE_IBM_COM_AIU_PF");
 
@@ -133,9 +135,21 @@ std::vector<SpyreDeviceInfo> buildDeviceList() {
     DEBUGINFO("spyre_device_enum: PCIDEVICE_IBM_COM_AIU_PF =", k8s_env, "->",
               visible_bus_ids.size(), "devices");
   } else {
-    visible_bus_ids = all_bus_ids;
-    DEBUGINFO("spyre_device_enum: found", visible_bus_ids.size(),
-              "Spyre devices via PCI scan");
+    const char* world_size_env = std::getenv("AIU_WORLD_SIZE");
+    int world_size = 0;
+    if (world_size_env && world_size_env[0] != '\0') {
+      world_size = std::stoi(world_size_env);
+    }
+    if (world_size > 0) {
+      visible_bus_ids = all_bus_ids;
+      DEBUGINFO("spyre_device_enum: found", visible_bus_ids.size(),
+                "Spyre devices via PCI scan");
+    } else {
+      visible_bus_ids.clear();
+      DEBUGINFO(
+          "spyre_device_enum: PCIDEVICE_IBM_COM_AIU_PF not set and "
+          "AIU_WORLD_SIZE is 0, returning empty device list");
+    }
   }
 
   std::vector<SpyreDeviceInfo> devices;
