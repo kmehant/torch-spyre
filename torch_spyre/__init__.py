@@ -51,6 +51,8 @@ class _SpyreImpl:
         return super().__getattribute__(name)
 
     def _lazy_init(self):
+        if not self.is_available():
+            raise RuntimeError("Spyre runtime is not available")
         if self._initialized:
             return
         with _runtime_init_lock:
