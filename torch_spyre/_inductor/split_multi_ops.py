@@ -284,7 +284,7 @@ def _build_inner_fn(
     vid_to_stride = {}
     for v in value_vids:
         if v not in vid_to_constant:
-            if vid_to_load_index and v in vid_to_load_index:
+            if vid_to_load_index and n_dims and v in vid_to_load_index:
                 continue
             buf_name = vid_to_bufname[v]
             vid_to_stride[v] = V.graph.get_buffer(buf_name).layout.stride
