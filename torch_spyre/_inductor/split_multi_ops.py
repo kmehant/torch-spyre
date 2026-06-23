@@ -307,7 +307,7 @@ def _build_inner_fn(
                 # Use the original traced load index expression
                 # instead of stride since index tuple could be different
                 # from allocated buffer dimension.
-                # ref - https://github.com/torch-spyre/hf-adapters/actions/runs/27740345917/job/82065998407
+                # ref - https://github.com/torch-spyre/torch-spyre/issues/2797
                 traced_idx = vid_to_load_index[v]
                 idx = traced_idx.subs(subs)
                 inputs.append(V.ops.load(vid_to_bufname[v], idx))
