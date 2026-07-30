@@ -1,0 +1,178 @@
+name: build-test-pytorch-source
+
+# ---------------------------------------------------------------------------
+# Reusable workflow — not triggered directly. Called by
+# receive_pytorch_trigger.yaml once a repository_dispatch from
+# pytorch/pytorch has been gated and a commit SHA extracted.
+#
+# Builds that exact PyTorch commit from source, builds torch-spyre against
+# it (editable, --local-pytorch style), and runs the upstream test suites.
+#
+# Build + test run in a SINGLE job on a card-bearing runner rather than a
+# build job + artifact + test job: build-pytorch.sh and
+# build-torch-spyre.sh --local-pytorch both produce editable installs tied
+# to absolute paths and a shared venv, which are brittle to relocate across
+# runners/pods. The tradeoff (a card sits idle during the source build) is
+# accepted since this pipeline runs per upstream merge, not per PR.
+# ---------------------------------------------------------------------------
+on:
+  workflow_call:
+    inputs:
+      pytorch_sha:
+        description: Exact pytorch/pytorch commit SHA to build
+        required: true
+        type: string
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build_and_test:
+    name: Build PyTorch@${{ inputs.pytorch_sha }} + torch-spyre, run upstream tests
+    runs-on:
+      - x86_64
+      - spyre_pf_x1
+      - linux
+      - image_spyre_backend
+    timeout-minutes: 180
+    env:
+      # GitHub Actions sets CI=true which causes pytest inductor tests to fail.
+      CI: ''
+    steps:
+      - name: Checkout composite actions
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          sparse-checkout: .github/actions
+          sparse-checkout-cone-mode: false
+
+      - name: Checkout torch-spyre
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          path: torch-spyre
+
+      - name: Checkout pytorch@${{ inputs.pytorch_sha }}
+        uses: ./.github/actions/checkout-pytorch
+        with:
+          sha: ${{ inputs.pytorch_sha }}
+
+      - uses: ./.github/actions/gather-runner-info
+        with:
+          verbose: 'true'
+
+      # - name: Report CI started to pytorch/pytorch
+      #   continue-on-error: true
+      #   uses: pytorch/test-infra/.github/actions/cross-repo-ci-relay-callback@main
+      #   with:
+      #     status: in_progress
+
+      - name: Build PyTorch from source
+        uses: ./.github/actions/build-pytorch-from-source
+
+      - name: Build torch-spyre against local PyTorch
+        uses: ./.github/actions/build-torch-spyre-local-pytorch
+
+      - name: Derive report paths (View Ops)
+        run: |
+          REPORT_NAME="test_view_ops_config.xml"
+          echo "REPORT_NAME_VIEW_OPS=${REPORT_NAME}" >> "$GITHUB_ENV"
+          echo "REPORT_PATH_VIEW_OPS=${GITHUB_WORKSPACE}/${REPORT_NAME}" >> "$GITHUB_ENV"
+
+      - name: Run View Ops tests
+        uses: ./.github/actions/run-test-suite
+        with:
+          suite_name: View Ops
+          config: tests/configs/upstream_tests/test_view_ops_config.yaml
+          extra_test_flags: -v
+          junit_xml_path: ${{ env.REPORT_PATH_VIEW_OPS }}
+          report_name: ${{ env.REPORT_NAME_VIEW_OPS }}
+
+      - name: Derive report paths (Profiler)
+        run: |
+          REPORT_NAME="test_profiler_config.xml"
+          echo "REPORT_NAME_PROFILER=${REPORT_NAME}" >> "$GITHUB_ENV"
+          echo "REPORT_PATH_PROFILER=${GITHUB_WORKSPACE}/${REPORT_NAME}" >> "$GITHUB_ENV"
+
+      - name: Run Profiler tests
+        uses: ./.github/actions/run-test-suite
+        with:
+          suite_name: Profiler
+          config: tests/configs/upstream_tests/test_profiler_config.yaml
+          extra_test_flags: -v
+          junit_xml_path: ${{ env.REPORT_PATH_PROFILER }}
+          report_name: ${{ env.REPORT_NAME_PROFILER }}
+
+      # ---------------------------------------------------------------------
+      # Aggregate passed/failed/skipped/error counts from the JUnit XML
+      # reports so they can be included in the upstream dashboard payload.
+      # ---------------------------------------------------------------------
+      # - name: Parse test results (counts)
+      #   id: test_results
+      #   if: always()
+      #   run: |
+      #     python3 <<'PYEOF'
+      #     import json
+      #     import os
+      #     from xml.etree import ElementTree as ET
+      #
+      #     xml_files = [
+      #         os.environ.get("REPORT_PATH_VIEW_OPS", ""),
+      #         os.environ.get("REPORT_PATH_PROFILER", ""),
+      #     ]
+      #
+      #     totals = {"passed": 0, "failed": 0, "skipped": 0, "errors": 0, "total": 0}
+      #     for xml_path in xml_files:
+      #         if not xml_path or not os.path.isfile(xml_path):
+      #             continue
+      #         root = ET.parse(xml_path).getroot()
+      #         cases = root.findall(".//testcase")
+      #         totals["total"] += len(cases)
+      #         for case in cases:
+      #             if case.find("failure") is not None:
+      #                 totals["failed"] += 1
+      #             elif case.find("error") is not None:
+      #                 totals["errors"] += 1
+      #             elif case.find("skipped") is not None:
+      #                 totals["skipped"] += 1
+      #             else:
+      #                 totals["passed"] += 1
+      #
+      #     print(f"Test totals: {totals}")
+      #     summary_path = os.environ.get("GITHUB_STEP_SUMMARY", "")
+      #     if summary_path:
+      #         with open(summary_path, "a") as f:
+      #             f.write(
+      #                 "### Upstream source-build test results\n\n"
+      #                 f"| Total | Passed | Failed | Errors | Skipped |\n"
+      #                 f"|---|---|---|---|---|\n"
+      #                 f"| {totals['total']} | {totals['passed']} | {totals['failed']} | "
+      #                 f"{totals['errors']} | {totals['skipped']} |\n"
+      #             )
+      #     output_path = os.environ.get("GITHUB_OUTPUT", "")
+      #     if output_path:
+      #         with open(output_path, "a") as f:
+      #             f.write(f"test_results_json={json.dumps(totals)}\n")
+      #     PYEOF
+      #   env:
+      #     REPORT_PATH_VIEW_OPS: ${{ env.REPORT_PATH_VIEW_OPS }}
+      #     REPORT_PATH_PROFILER: ${{ env.REPORT_PATH_PROFILER }}
+
+      # - name: Report CI completed to pytorch/pytorch
+      #   if: always()
+      #   continue-on-error: true
+      #   uses: pytorch/test-infra/.github/actions/cross-repo-ci-relay-callback@main
+      #   with:
+      #     status: completed
+      #     conclusion: ${{ job.status == 'success' && 'success' || 'failure' }}
+      #     test-results: ${{ steps.test_results.outputs.test_results_json }}
+
+      - name: Upload JUnit XML reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: upstream-source-build-reports-${{ inputs.pytorch_sha }}
+          path: |
+            ${{ env.REPORT_PATH_VIEW_OPS }}
+            ${{ env.REPORT_PATH_PROFILER }}
+          if-no-files-found: warn
+          retention-days: 30
