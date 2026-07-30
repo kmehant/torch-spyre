@@ -1,18 +1,12 @@
 name: build-test-pytorch-source
 
 # ---------------------------------------------------------------------------
-# Reusable workflow — not triggered directly. Called by the
-# `gate_and_build`/`build_and_test` jobs in
-# push-pytorch-dispatch-to-clickhouse.yaml once a repository_dispatch from
+# Reusable workflow — not triggered directly. Called by
+# receive_pytorch_trigger.yaml once a repository_dispatch from
 # pytorch/pytorch has been gated and a commit SHA extracted.
 #
 # Builds that exact PyTorch commit from source, builds torch-spyre against
-# it (editable, --local-pytorch style), and runs the upstream test suite.
-# Reports its lifecycle (torch_build -> torch_spyre_build -> running_tests
-# -> completed) and final test-result counts back into the same ClickHouse
-# row the caller's `ingest` job created, keyed on
-# github.event.client_payload.delivery_id (shared across the whole
-# workflow_call, since the github context always reflects the caller).
+# it (editable, --local-pytorch style), and runs the upstream test suites.
 #
 # Build + test run in a SINGLE job on a card-bearing runner rather than a
 # build job + artifact + test job: build-pytorch.sh and
