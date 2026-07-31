@@ -31,7 +31,11 @@ permissions:
 jobs:
   ingest:
     name: Classify dispatch -> ClickHouse
-    runs-on: ubuntu-latest
+    runs-on:
+      - x86_64
+      - spyre_pf_x0
+      - linux
+      - image_spyre_backend
     timeout-minutes: 10
 
     env:
