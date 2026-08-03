@@ -1,12 +1,18 @@
 name: build-test-pytorch-source
 
 # ---------------------------------------------------------------------------
-# Reusable workflow — not triggered directly. Called by
-# receive_pytorch_trigger.yaml once a repository_dispatch from
+# Reusable workflow — not triggered directly. Called by the
+# `gate_and_build`/`build_and_test` jobs in
+# push-pytorch-dispatch-to-clickhouse.yaml once a repository_dispatch from
 # pytorch/pytorch has been gated and a commit SHA extracted.
 #
 # Builds that exact PyTorch commit from source, builds torch-spyre against
-# it (editable, --local-pytorch style), and runs the upstream test suites.
+# it (editable, --local-pytorch style), and runs the upstream test suite.
+# Reports its lifecycle (torch_build -> torch_spyre_build -> running_tests
+# -> completed) and final test-result counts back into the same ClickHouse
+# row the caller's `ingest` job created, keyed on
+# github.event.client_payload.delivery_id (shared across the whole
+# workflow_call, since the github context always reflects the caller).
 #
 # Build + test run in a SINGLE job on a card-bearing runner rather than a
 # build job + artifact + test job: build-pytorch.sh and
@@ -197,6 +203,30 @@ jobs:
       #     status: completed
       #     conclusion: ${{ job.status == 'success' && 'success' || 'failure' }}
       #     test-results: ${{ steps.test_results.outputs.test_results_json }}
+
+      - name: 'Report stage: completed'
+        if: always()
+        env:
+          TEST_RESULTS_JSON: ${{ steps.test_results.outputs.test_results_json }}
+          CONCLUSION: ${{ job.status == 'success' && 'success' || 'failure' }}
+        run: |
+          python3 -c "
+          import json, os
+          payload = json.loads(os.environ.get('TEST_RESULTS_JSON') or '{}')
+          payload['conclusion'] = os.environ['CONCLUSION']
+          with open('result_payload.json', 'w') as f:
+              json.dump(payload, f)
+          "
+          uv run --with clickhouse-connect --with regex \
+            torch-spyre/.github/scripts/ingest_pytorch_dispatch.py \
+            --payload-file payload.json \
+            --event-type "${{ github.event.action }}" \
+            --run-id   "${{ github.run_id }}" \
+            --run-link "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            --job-name build_and_test \
+            --stage completed \
+            --progress completed \
+            --result-payload-file result_payload.json
 
       - name: Upload JUnit XML reports
         if: always()
