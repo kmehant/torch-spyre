@@ -1,9 +1,14 @@
 name: push-pytorch-dispatch-to-clickhouse
 
 # Entry point for repository_dispatch events sent by pytorch/pytorch's CI
-# relay (Cross-Repository CI Relay, aka CRCR). Classifies the dispatch
-# (PR opened / new commit to existing PR / closed / merged ) and records it
-# in ClickHouse. Does not trigger any build or test pipeline.
+# relay (Cross-Repository CI Relay, aka CRCR).
+#
+# - ingest: classifies the dispatch (PR opened / new commit / closed /
+#   merged) and records it in ClickHouse.
+# - gate_and_build / build_and_test: independently gates on "merged PR
+#   targeting main", extracts the merge commit SHA, and kicks off the
+#   build-from-source + upstream test pipeline in
+#   build_test_pytorch_source.yaml.
 run-name: >-
   PyTorch CRCR CI Trigger -
   ${{
@@ -27,6 +32,9 @@ concurrency:
 
 permissions:
   contents: read
+  # Needed for OIDC if/when the cross-repo-ci-relay-callback reporting steps
+  # in build_test_pytorch_source.yaml are uncommented.
+  id-token: write
 
 jobs:
   ingest:
@@ -91,3 +99,62 @@ jobs:
             echo "| Event type | ${{ github.event.action }} |"
             echo "| Run ID        | ${{ github.run_id }} |"
           } >> "$GITHUB_STEP_SUMMARY"
+
+  gate_and_build:
+    name: Gate on merged PR to main, extract build SHA
+    runs-on: ubuntu-latest
+    outputs:
+      pytorch_sha: ${{ steps.extract.outputs.pytorch_sha }}
+      should_build: ${{ steps.extract.outputs.should_build }}
+    steps:
+      - name: Extract build parameters from payload
+        id: extract
+        env:
+          PAYLOAD_JSON: ${{ toJSON(github.event.client_payload) }}
+          EVENT_TYPE: ${{ github.event.client_payload.event_type }}
+        run: |
+          set -euo pipefail
+
+          # ---- Filter: only merged PRs targeting main ----
+          if [ "${EVENT_TYPE}" = "pull_request" ]; then
+            ACTION=$(echo "$PAYLOAD_JSON" | jq -r '.payload.action // empty')
+            BASE_REF=$(echo "$PAYLOAD_JSON" | jq -r '.payload.pull_request.base.ref // empty')
+            if [ "${ACTION}" != "closed" ]; then
+              echo "should_build=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            if [ "${BASE_REF}" != "main" ]; then
+              echo "should_build=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            # .pull_request.merged is unreliable on repository_dispatch
+            # payloads, so gate on the "Merged" label instead.
+            HAS_MERGED=$(echo "$PAYLOAD_JSON" | jq -r '.payload.pull_request.labels // [] | map(.name) | index("Merged") // ""')
+            if [ -z "${HAS_MERGED}" ]; then
+              echo "should_build=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
+            # Build the exact commit that was merged, not just latest main.
+            SHA=$(echo "$PAYLOAD_JSON" | jq -r '.payload.pull_request.merge_commit_sha // empty')
+            if [ -z "${SHA}" ]; then
+              echo "should_build=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "pytorch_sha=${SHA}" >> "$GITHUB_OUTPUT"
+            echo "should_build=true" >> "$GITHUB_OUTPUT"
+          elif [ "${EVENT_TYPE}" = "push" ]; then
+            # Not wired up yet — push dispatches are ignored for now.
+            echo "should_build=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::Unknown event_type: ${EVENT_TYPE}"
+            exit 1
+          fi
+
+  build_and_test:
+    needs: gate_and_build
+    if: ${{ needs.gate_and_build.outputs.should_build == 'true' }}
+    uses: ./.github/workflows/build_test_pytorch_source.yaml
+    secrets: inherit
+    with:
+      pytorch_sha: ${{ needs.gate_and_build.outputs.pytorch_sha }}
