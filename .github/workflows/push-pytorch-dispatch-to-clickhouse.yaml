@@ -106,6 +106,14 @@ jobs:
     outputs:
       pytorch_sha: ${{ steps.extract.outputs.pytorch_sha }}
       should_build: ${{ steps.extract.outputs.should_build }}
+
+    env:
+      CLICKHOUSE_HOST: ${{ secrets.CLICKHOUSE_HOST_DEV }}
+      CLICKHOUSE_PORT: ${{ secrets.CLICKHOUSE_PORT_DEV }}
+      CLICKHOUSE_USER: ${{ secrets.CLICKHOUSE_USER_DEV }}
+      CLICKHOUSE_PASS: ${{ secrets.CLICKHOUSE_PASS_DEV }}
+      CLICKHOUSE_DB: ${{ secrets.CLICKHOUSE_DB_DEV }}
+
     steps:
       - name: Extract build parameters from payload
         id: extract
@@ -150,6 +158,37 @@ jobs:
             echo "::error::Unknown event_type: ${EVENT_TYPE}"
             exit 1
           fi
+
+      - name: Checkout ingest script
+        if: steps.extract.outputs.should_build == 'false'
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          sparse-checkout: |
+            .github/scripts/ingest_pytorch_dispatch.py
+
+      - name: Write dispatch payload to file
+        if: steps.extract.outputs.should_build == 'false'
+        env:
+          PAYLOAD_JSON: ${{ toJSON(github.event.client_payload) }}
+        run: |
+          printf '%s' "$PAYLOAD_JSON" > payload.json
+
+      - name: Install uv
+        if: steps.extract.outputs.should_build == 'false'
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+
+      - name: Record gate rejection in ClickHouse
+        if: steps.extract.outputs.should_build == 'false'
+        run: |
+          uv run --with clickhouse-connect --with regex \
+            .github/scripts/ingest_pytorch_dispatch.py \
+            --payload-file payload.json \
+            --event-type "${{ github.event.action }}" \
+            --run-id   "${{ github.run_id }}" \
+            --run-link "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            --job-name build_and_test \
+            --stage rejected \
+            --progress rejected
 
   build_and_test:
     needs: gate_and_build

@@ -56,6 +56,10 @@ CREATE TABLE IF NOT EXISTS pytorch_ci_dispatches
     -- the sort key since one dispatch can fan out into several jobs.
     job_name        LowCardinality(String) DEFAULT '',
     progress        LowCardinality(String) DEFAULT '',
+    -- Finer-grained point in job_name's pipeline, e.g. torch_build ->
+    -- torch_spyre_build -> running_tests -> completed, or rejected if the
+    -- dispatch never passed the build gate.
+    stage           LowCardinality(String) DEFAULT '',
     result_payload  String DEFAULT '',
 
     received_at     DateTime DEFAULT now(),
@@ -171,6 +175,7 @@ def build_row(
         "gha_run_link": _str(args.run_link),
         "job_name": _str(args.job_name),
         "progress": _str(args.progress),
+        "stage": _str(args.stage),
         "result_payload": result_payload_text,
         "raw_payload": raw_payload_text,
     }
@@ -178,6 +183,16 @@ def build_row(
 
 # Valid values for --progress / the `progress` column.
 PROGRESS_STATES = ("", "in_progress", "completed", "rejected")
+
+# Valid values for --stage / the `stage` column.
+STAGE_STATES = (
+    "",
+    "rejected",
+    "torch_build",
+    "torch_spyre_build",
+    "running_tests",
+    "completed",
+)
 
 COLUMN_NAMES = [
     "delivery_id",
@@ -196,6 +211,7 @@ COLUMN_NAMES = [
     "gha_run_link",
     "job_name",
     "progress",
+    "stage",
     "result_payload",
     "raw_payload",
 ]
@@ -231,6 +247,15 @@ def main() -> None:
         default="",
         choices=PROGRESS_STATES,
         help="Lifecycle state of --job-name: in_progress | completed | rejected",
+    )
+    parser.add_argument(
+        "--stage",
+        default="",
+        choices=STAGE_STATES,
+        help=(
+            "Finer-grained point in --job-name's pipeline: rejected | "
+            "torch_build | torch_spyre_build | running_tests | completed"
+        ),
     )
     parser.add_argument(
         "--result-payload-file",
@@ -277,6 +302,7 @@ def main() -> None:
     print(f"[info]   pr_number   : {row['pr_number']}")
     print(f"[info]   job_name    : {row['job_name']}")
     print(f"[info]   progress    : {row['progress']}")
+    print(f"[info]   stage       : {row['stage']}")
 
     print(
         f"[info] Connecting to ClickHouse at "
@@ -287,6 +313,13 @@ def main() -> None:
     print("[info] Connected.")
 
     client.command(_CREATE_TABLE_SQL)
+    # CREATE TABLE IF NOT EXISTS above won't add columns to a table that
+    # already exists (e.g. from before `stage` was introduced) — upgrade it
+    # in place, idempotently.
+    client.command(
+        "ALTER TABLE pytorch_ci_dispatches "
+        "ADD COLUMN IF NOT EXISTS stage LowCardinality(String) DEFAULT ''"
+    )
 
     client.insert(
         table="pytorch_ci_dispatches",
