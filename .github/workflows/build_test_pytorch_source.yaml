@@ -197,39 +197,6 @@ jobs:
       #     conclusion: ${{ job.status == 'success' && 'success' || 'failure' }}
       #     test-results: ${{ steps.test_results.outputs.test_results_json }}
 
-      - name: 'Report stage: completed'
-        if: always()
-        env:
-          TEST_RESULTS_JSON: ${{ steps.test_results.outputs.test_results_json }}
-          CONCLUSION: ${{ job.status == 'success' && 'success' || 'failure' }}
-        run: |
-          python3 torch-spyre/.github/scripts/build_stage_result_payload.py \
-            --test-results-json "${TEST_RESULTS_JSON}" \
-            --conclusion "${CONCLUSION}" \
-            --duration pytorch_build_seconds=T_TORCH_BUILD_START:T_TORCH_SPYRE_BUILD_START \
-            --duration torch_spyre_build_seconds=T_TORCH_SPYRE_BUILD_START:T_RUNNING_TESTS_START \
-            --duration tests_seconds=T_RUNNING_TESTS_START:T_RUNNING_TESTS_END \
-            --output-file result_payload.json
-          uv run --with clickhouse-connect --with regex \
-            torch-spyre/.github/scripts/ingest_pytorch_dispatch.py \
-            --payload-file payload.json \
-            --event-type "${{ github.event.action }}" \
-            --run-id   "${{ github.run_id }}" \
-            --run-link "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
-            --job-name build_and_test \
-            --stage completed \
-            --progress completed \
-            --result-payload-file result_payload.json
-
-      # - name: Report CI completed to pytorch/pytorch
-      #   if: always()
-      #   continue-on-error: true
-      #   uses: pytorch/test-infra/.github/actions/cross-repo-ci-relay-callback@main
-      #   with:
-      #     status: completed
-      #     conclusion: ${{ job.status == 'success' && 'success' || 'failure' }}
-      #     test-results: ${{ steps.test_results.outputs.test_results_json }}
-
       - name: Upload JUnit XML reports
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
