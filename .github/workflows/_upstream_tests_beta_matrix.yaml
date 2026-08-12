@@ -30,6 +30,15 @@ on:
         required: false
         type: string
         default: ''
+      pytorch_wheel_artifact_name:
+        description: >-
+          Name of a prebuilt PyTorch wheel artifact to install in place of the
+          pinned pytorch-cpu wheel (e.g. a from-source build at pytorch_sha).
+          Empty (default) = keep the pinned wheel install-prebuilt-torch-spyre
+          resolves normally.
+        required: false
+        type: string
+        default: ''
 
 defaults:
   run:
@@ -200,6 +209,15 @@ jobs:
         uses: ./.github/actions/install-prebuilt-torch-spyre
         with:
           artifact_name: ${{ inputs.artifact_name }}
+
+      # pytorch/pytorch dispatch path only (build_test_pytorch_source.yaml):
+      # override the pinned pytorch-cpu wheel with the exact PyTorch build
+      # torch-spyre's _C.so was compiled against.
+      - name: Install prebuilt PyTorch
+        if: ${{ inputs.pytorch_wheel_artifact_name != '' }}
+        uses: ./.github/actions/install-prebuilt-pytorch
+        with:
+          artifact_name: ${{ inputs.pytorch_wheel_artifact_name }}
 
       - name: Derive report paths
         run: |
