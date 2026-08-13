@@ -99,18 +99,13 @@ fi
 #                  Falls back to serial execution when only one card is found.
 #
 # --mode=<gating|validate>
-#                  Controls whether test *failures* (pytest exit code 1 --
-#                  "some tests failed/errored") make this script exit non-zero.
-#                    gating   (default) -- current behaviour: a test failure
-#                              propagates to a non-zero exit code (e.g. for CI
-#                              gates that must fail the job).
+#                  Mode of running this script
+#                    gating   (default) -- current behaviour: failed tests
+#                              propagates to a non-zero exit code (e.g. for CI jobs
+#                              that needing gating on all tests passed).
 #                    validate -- test failures are recorded in the printed
-#                              summary as usual but do NOT cause this script
-#                              to exit non-zero. All other non-zero exits
-#                              (no tests collected, missing python3/pytest,
-#                              Ctrl-C, segfault/xdist-fallback issues, etc.)
-#                              are unaffected by --mode and behave identically
-#                              in both modes.
+#                              summary as usual but won't gate a CI job. 
+#                              All other non-zero exits are captured anyway.
 #
 # Usage:
 #   run_test.sh config.yaml                 # default: all tests run serially
