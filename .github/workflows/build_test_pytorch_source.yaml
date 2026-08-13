@@ -90,14 +90,16 @@ jobs:
       - name: Write dispatch payload to file
         env:
           PAYLOAD_JSON: ${{ toJSON(github.event.client_payload) }}
-          # workflow_dispatch (manual UI run) has no client_payload, so the
-          # ingest script would find an empty delivery_id and refuse to
-          # ingest — synthesize one keyed on this run instead.
-          MANUAL_DELIVERY_ID: manual-${{ github.run_id }}
+          # workflow_dispatch (manual UI run) and schedule (nightly cron,
+          # relayed here from push-pytorch-dispatch-to-clickhouse.yaml) have
+          # no client_payload, so the ingest script would find an empty
+          # delivery_id and refuse to ingest — synthesize one keyed on this
+          # run instead.
+          SYNTHETIC_DELIVERY_ID: ${{ github.event_name }}-${{ github.run_id }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            printf '{"delivery_id":"%s","event_type":"workflow_dispatch","payload":{"action":"manual_dispatch"}}' \
-              "$MANUAL_DELIVERY_ID" > payload.json
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "${{ github.event_name }}" = "schedule" ]; then
+            printf '{"delivery_id":"%s","event_type":"%s","payload":{"action":"manual_dispatch"}}' \
+              "$SYNTHETIC_DELIVERY_ID" "${{ github.event_name }}" > payload.json
           else
             printf '%s' "$PAYLOAD_JSON" > payload.json
           fi
@@ -226,8 +228,19 @@ jobs:
       - name: Write dispatch payload to file
         env:
           PAYLOAD_JSON: ${{ toJSON(github.event.client_payload) }}
+          # Must match the `build` job's synthetic delivery_id exactly (same
+          # github.event_name + github.run_id) so this job's "completed"
+          # stage row replaces the same ClickHouse row -- not a new one --
+          # for workflow_dispatch/schedule (nightly) runs, which have no
+          # client_payload to read a delivery_id from.
+          SYNTHETIC_DELIVERY_ID: ${{ github.event_name }}-${{ github.run_id }}
         run: |
-          printf '%s' "$PAYLOAD_JSON" > payload.json
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "${{ github.event_name }}" = "schedule" ]; then
+            printf '{"delivery_id":"%s","event_type":"%s","payload":{"action":"manual_dispatch"}}' \
+              "$SYNTHETIC_DELIVERY_ID" "${{ github.event_name }}" > payload.json
+          else
+            printf '%s' "$PAYLOAD_JSON" > payload.json
+          fi
 
       - name: Download all JUnit XML artifacts from the test matrix
         env:
