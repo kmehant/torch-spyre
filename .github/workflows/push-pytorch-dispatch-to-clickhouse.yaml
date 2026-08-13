@@ -8,15 +8,19 @@ name: push-pytorch-dispatch-to-clickhouse
 #   triggers -- there is no dispatch payload to classify on schedule/manual
 #   nightly runs.
 # - gate_and_build / build_and_test: on repository_dispatch, gates on
-#   "merged PR targeting main" and extracts the merge commit SHA; on
-#   schedule/workflow_dispatch (nightly), instead resolves the exact
-#   upstream commit pytorch/pytorch's own "nightly" branch was cut from
-#   (same approach as pytorch-redhat-ci's crcr-nightly.yml). Either way it
-#   kicks off the build-from-source + upstream test pipeline in
-#   build_test_pytorch_source.yaml.
+#   "merged PR targeting main" and extracts the merge commit SHA. On
+#   schedule, or workflow_dispatch with no pytorch_sha input, instead
+#   resolves the exact upstream commit pytorch/pytorch's own "nightly"
+#   branch was cut from (same approach as pytorch-redhat-ci's
+#   crcr-nightly.yml). A workflow_dispatch run that *does* supply
+#   pytorch_sha builds that exact commit instead, skipping nightly
+#   resolution entirely. Either way it kicks off the build-from-source +
+#   upstream test pipeline in build_test_pytorch_source.yaml.
 run-name: >-
   ${{
     github.event_name == 'schedule' && 'PyTorch CRCR Nightly Trigger (cron)' ||
+    (github.event_name == 'workflow_dispatch' && github.event.inputs.pytorch_sha != '' &&
+      format('PyTorch CRCR Manual Trigger - {0}', github.event.inputs.pytorch_sha)) ||
     github.event_name == 'workflow_dispatch' && 'PyTorch CRCR Nightly Trigger (manual)' ||
     format(
       'PyTorch CRCR CI Trigger - {0}',
@@ -34,11 +38,15 @@ on:
     types: [pull_request]
   schedule:
     - cron: 0 4 * * *    # nightly, daily at 04:00 UTC
-  workflow_dispatch: null
+  workflow_dispatch:
+    inputs:
+      pytorch_sha:
+        description: >-
+          Exact pytorch/pytorch commit SHA to build. Leave empty to resolve
+          and build the current nightly (same as the scheduled cron run).
+        required: false
+        type: string
 
-env:
-  UPSTREAM_REPO: pytorch/pytorch
-  NIGHTLY_BRANCH: nightly
 
 concurrency:
   group: >-
@@ -150,32 +158,44 @@ jobs:
         env:
           PAYLOAD_JSON: ${{ toJSON(github.event.client_payload) }}
           EVENT_TYPE: ${{ github.event.client_payload.event_type }}
+          EXPLICIT_SHA: ${{ github.event.inputs.pytorch_sha }}
         run: |
           set -euo pipefail
 
-          # ---- Nightly path: schedule cron or manual workflow_dispatch of
-          # this workflow itself. There is no repository_dispatch payload to
-          # gate on here -- instead resolve the exact upstream commit
-          # pytorch/pytorch's own "nightly" branch was cut from, the same
-          # way pytorch-redhat-ci's crcr-nightly.yml does: the nightly
-          # branch's HEAD commit message embeds the source main SHA in
-          # parentheses, e.g. "... (abcdef0123...)".
+          # ---- Manual path: workflow_dispatch with an explicit pytorch_sha
+          # input. Build exactly that commit -- skip nightly resolution
+          # entirely, since the whole point of passing pytorch_sha is to
+          # override it.
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${EXPLICIT_SHA}" ]; then
+            echo "Manual trigger: building explicit pytorch_sha=${EXPLICIT_SHA}"
+            echo "pytorch_sha=${EXPLICIT_SHA}" >> "$GITHUB_OUTPUT"
+            echo "should_build=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # ---- Nightly path: schedule cron, or manual workflow_dispatch of
+          # this workflow with no pytorch_sha input given. There is no
+          # repository_dispatch payload to gate on here -- instead resolve
+          # the exact upstream commit pytorch/pytorch's own "nightly" branch
+          # was cut from, the same way pytorch-redhat-ci's crcr-nightly.yml
+          # does: the nightly branch's HEAD commit message embeds the
+          # source main SHA in parentheses, e.g. "... (abcdef0123...)".
           if [ "${{ github.event_name }}" = "schedule" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "Nightly trigger (${{ github.event_name }}): resolving source SHA from ${UPSTREAM_REPO}@${NIGHTLY_BRANCH}"
-            NIGHTLY_SHA=$(curl -fsSL "https://api.github.com/repos/${UPSTREAM_REPO}/commits?sha=${NIGHTLY_BRANCH}&per_page=1" | jq -r '.[0].sha // empty')
+            echo "Nightly trigger (${{ github.event_name }}): resolving source SHA from pytorch/pytorch@nightly"
+            NIGHTLY_SHA=$(curl -fsSL "https://api.github.com/repos/pytorch/pytorch/commits?sha=nightly&per_page=1" | jq -r '.[0].sha // empty')
             if [ -z "${NIGHTLY_SHA}" ]; then
-              echo "::error::Could not resolve HEAD for ${UPSTREAM_REPO}/${NIGHTLY_BRANCH}"
+              echo "::error::Could not resolve HEAD for pytorch/pytorch/nightly"
               exit 1
             fi
 
-            COMMIT_MSG=$(curl -fsSL "https://api.github.com/repos/${UPSTREAM_REPO}/commits/${NIGHTLY_SHA}" | jq -r '.commit.message')
+            COMMIT_MSG=$(curl -fsSL "https://api.github.com/repos/pytorch/pytorch/commits/${NIGHTLY_SHA}" | jq -r '.commit.message')
             SOURCE_SHA=$(echo "$COMMIT_MSG" | grep -oP '\(([a-f0-9]{40})\)' | tr -d '()')
             if [ -z "${SOURCE_SHA}" ]; then
-              echo "::error::Could not extract source SHA from latest ${NIGHTLY_BRANCH} commit"
+              echo "::error::Could not extract source SHA from latest nightly commit"
               exit 1
             fi
 
-            echo "Resolved ${UPSTREAM_REPO}@${NIGHTLY_BRANCH} -> source ${SOURCE_SHA}"
+            echo "Resolved pytorch/pytorch@nightly -> source ${SOURCE_SHA}"
             echo "pytorch_sha=${SOURCE_SHA}" >> "$GITHUB_OUTPUT"
             echo "should_build=true" >> "$GITHUB_OUTPUT"
             exit 0
