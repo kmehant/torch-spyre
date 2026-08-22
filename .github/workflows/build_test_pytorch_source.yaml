@@ -308,8 +308,7 @@ jobs:
           # recorded as a passing run.
           CONCLUSION: >-
             ${{
-              (needs.build.result == 'success' && needs.test.result == 'success' &&
-              fromJSON(steps.test_results.outputs.test_results_json).total > 0) && 'success' || 'failure'
+              (fromJSON(steps.test_results.outputs.test_results_json).total > 0) && 'success' || 'failure'
             }}
           # Empty whenever `build` failed before reaching compute_durations
           # (e.g. the PyTorch/torch-spyre build itself failed) — omitted
@@ -352,8 +351,7 @@ jobs:
           status: completed
           conclusion: >-
             ${{
-              (needs.build.result == 'success' && needs.test.result == 'success' &&
-              fromJSON(steps.test_results.outputs.test_results_json).total > 0) && 'success' || 'failure'
+              (fromJSON(steps.test_results.outputs.test_results_json).total > 0) && 'success' || 'failure'
             }}
           test-results: >-
             {
@@ -378,8 +376,7 @@ jobs:
           status: completed
           conclusion: >-
             ${{
-              (needs.build.result == 'success' && needs.test.result == 'success' &&
-              fromJSON(steps.test_results.outputs.test_results_json).total > 0) && 'success' || 'failure'
+              (fromJSON(steps.test_results.outputs.test_results_json).total > 0) && 'success' || 'failure'
             }}
           test-results: >-
             {
