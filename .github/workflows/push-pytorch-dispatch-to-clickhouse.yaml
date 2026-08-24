@@ -56,8 +56,9 @@ concurrency:
 
 permissions:
   contents: read
-  # Needed for OIDC when doing CRCR HUD reporting
-  # logic in build_test_pytorch_source.yaml is commented for now.
+  # Needed to mint the OIDC tokens used by:
+  #  - the pytorch/pytorch CRCR relay callbacks in build_test_pytorch_source.yaml
+  #  - the RHEL CI Results Relay callback in report_to_rhel_relay below
   id-token: write
 
 jobs:
@@ -310,3 +311,86 @@ jobs:
     secrets: inherit
     with:
       pytorch_sha: ${{ needs.gate_and_build.outputs.pytorch_sha }}
+
+  # ---------------------------------------------------------------------------
+  # Report the nightly build_and_test result to the RHEL CI Results Relay
+  # (see https://github.com/TorchedHat/pytorch-redhat-ci onboarding docs).
+  # Nightly (schedule) only -- workflow_dispatch and repository_dispatch runs
+  # are not reported here, per the onboarding agreement covering only our
+  # scheduled nightly cadence.
+  # ---------------------------------------------------------------------------
+  report_to_rhel_relay:
+    name: Report nightly result to RHEL CI Relay
+    needs: [gate_and_build, build_and_test]
+    if: always() && github.event_name == 'schedule'
+    runs-on:
+      - x86_64
+      - spyre_pf_x0
+      - linux
+      - image_spyre_backend
+    steps:
+      - name: Mint OIDC token for RHEL Results Relay
+        id: oidc
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+        with:
+          script: |
+            const token = await core.getIDToken("rhel-results-relay");
+            core.setSecret(token);
+            core.setOutput('token', token);
+
+      - name: Report result to RHEL Results Relay
+        # Best-effort only -- see the onboarding docs' "Never gate your CI on
+        # reporting" guidance. A relay outage must never fail this workflow.
+        continue-on-error: true
+        env:
+          OIDC_TOKEN: ${{ steps.oidc.outputs.token }}
+          CALLBACK_URL: https://hg21hqq0r6.execute-api.us-east-1.amazonaws.com/default/crcr-rhel-workflow
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          PYTORCH_SHA: ${{ needs.gate_and_build.outputs.pytorch_sha }}
+          # gate_and_build itself can fail before ever setting should_build
+          # (e.g. nightly SHA resolution against pytorch/pytorch failing) --
+          # in that case build_and_test never runs (result: 'skipped'), which
+          # would misreport a real pipeline failure as merely "skipped".
+          # Force 'failure' whenever gate_and_build didn't succeed instead.
+          CONCLUSION: >-
+            ${{
+              needs.gate_and_build.result == 'success' && needs.build_and_test.result || 'failure'
+            }}
+        run: |
+          PYTORCH_SHA="${PYTORCH_SHA:-unresolved}"
+          DELIVERY_ID="spyre-nightly-${PYTORCH_SHA}-${RUN_ID}-build_and_test"
+
+          PAYLOAD=$(jq -n \
+            --arg delivery_id "$DELIVERY_ID" \
+            --arg conclusion "$CONCLUSION" \
+            --arg run_id "$RUN_ID" \
+            --arg run_attempt "$RUN_ATTEMPT" \
+            '{
+              schema_version: 1,
+              event_type: "nightly",
+              delivery_id: $delivery_id,
+              status: "completed",
+              conclusion: $conclusion,
+              workflow_name: "torch-spyre Nightly: PyTorch Source Build & Test",
+              run_id: $run_id,
+              run_attempt: $run_attempt,
+              job_name: "linux-x86_64-spyre-py3.12 / build_and_test"
+            }')
+
+          HTTP_CODE=$(curl -s -o /tmp/response.txt -w "%{http_code}" \
+            -X POST "$CALLBACK_URL" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer $OIDC_TOKEN" \
+            -d "$PAYLOAD" \
+            --max-time 15)
+
+          BODY=$(cat /tmp/response.txt)
+          echo "HTTP Status: $HTTP_CODE"
+          echo "Response: $BODY"
+
+          if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
+            echo "Result reported successfully to RHEL CI Relay"
+          else
+            echo "::warning::Failed to report result to RHEL CI Relay (HTTP $HTTP_CODE) -- non-blocking"
+          fi
