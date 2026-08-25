@@ -108,8 +108,6 @@ jobs:
           echo "VIRTUAL_ENV $VIRTUAL_ENV"
 
       - name: Classify dispatch and ingest into ClickHouse
-        # Best-effort -- a ClickHouse outage must never fail the dispatch
-        # classification pipeline.
         continue-on-error: true
         run: |
           source .venv/bin/activate
@@ -281,7 +279,6 @@ jobs:
 
       - name: Record gate rejection in ClickHouse
         if: steps.extract.outputs.should_build == 'false'
-        # Best-effort -- a ClickHouse outage must never fail the gating job.
         continue-on-error: true
         run: |
           uv run --with clickhouse-connect --with regex \
