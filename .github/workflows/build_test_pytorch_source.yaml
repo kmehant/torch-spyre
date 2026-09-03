@@ -416,9 +416,6 @@ jobs:
           tar -xzf "${RUNNER_TEMP}/gh-cli.tar.gz" -C "${RUNNER_TEMP}/gh-cli" --strip-components=1
           echo "${RUNNER_TEMP}/gh-cli/bin" >> "${GITHUB_PATH}"
 
-      # The in_progress ping for repository_dispatch runs is now sent from
-      # the `test` job (same job as its completed callback below, since the
-      # CRCR check-run is scoped per-job) -- do not duplicate it here.
 
       - name: Write dispatch payload to file
         env:
@@ -542,9 +539,6 @@ jobs:
           # resolved source SHA rather than a run-specific token.
           delivery-id: ${{ inputs.pytorch_sha }}
 
-      # The completed callback for repository_dispatch runs is now sent from
-      # the `test` job (same job as its in_progress callback, since the
-      # CRCR check-run is scoped per-job) -- do not duplicate it here.
 
       # ---------------------------------------------------------------------------
       # Report the nightly result to the RHEL CI Results Relay (see
