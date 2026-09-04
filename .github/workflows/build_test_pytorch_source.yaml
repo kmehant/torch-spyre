@@ -355,36 +355,6 @@ jobs:
             core.info(`Dispatched run ${run.id} completed with conclusion: ${conclusion}`);
             core.setOutput('conclusion', conclusion);
 
-      - name: Report CI completed to pytorch/pytorch
-        if: always() && github.event_name == 'repository_dispatch' && needs.build.result == 'success'
-        continue-on-error: true
-        uses: pytorch/test-infra/.github/actions/cross-repo-ci-relay-callback@main
-        with:
-          status: completed
-          conclusion: ${{ steps.dispatch.outputs.conclusion }}
-          job-name: linux-x86_64 / pytorch / test
-
-      # -------------------------------------------------------------------
-      # From here on: aggregate the per-suite JUnit XMLs the dispatched
-      # matrix run uploaded (one per suite) and report final counts +
-      # timings back into ClickHouse, pytorch/pytorch's CRCR, and the RHEL
-      # Results Relay. Runs even if `build` (and therefore the dispatch
-      # above) failed -- see the job-level if: always() note above.
-      # -------------------------------------------------------------------
-      - name: Checkout torch-spyre
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          path: torch-spyre
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
-        with:
-          # latest-known, not "latest": it resolves to the newest uv whose checksum is
-          # bundled INTO this setup-uv pin, resolved locally with no release lookup. A
-          # just-published release is not yet mirrored on releases.astral.sh, so "latest"
-          # 404s there and falls back to GitHub Releases, which rate-limits (429) once the
-          # fleet requests it concurrently. Bumping setup-uv moves this version forward.
-          version: latest-known
 
       # actions4gh/setup-gh@v1.0.2 extracts the gh tarball but never lands
       # the binary on PATH before it calls `gh auth login`, so every job
@@ -496,6 +466,26 @@ jobs:
             --torch-spyre-sha "${{ github.sha }}" \
             --result-payload-file result_payload.json
 
+      - name: Report CI completed to pytorch/pytorch
+        if: always() && github.event_name == 'repository_dispatch'
+        continue-on-error: true
+        uses: pytorch/test-infra/.github/actions/cross-repo-ci-relay-callback@main
+        with:
+          status: completed
+          conclusion: >-
+            ${{ 
+              fromJSON(steps.test_results.outputs.test_results_json).total > 0
+              && fromJSON(steps.test_results.outputs.test_results_json).failed == 0
+              && 'success' || 'failure'
+            }}
+          test-results: >-
+            {
+              "passed": ${{ fromJSON(steps.test_results.outputs.test_results_json).passed }},
+              "failed": ${{ fromJSON(steps.test_results.outputs.test_results_json).failed }},
+              "skipped": ${{ fromJSON(steps.test_results.outputs.test_results_json).skipped }},
+              "total": ${{ fromJSON(steps.test_results.outputs.test_results_json).total }}
+            }
+          job-name: linux-x86_64 / pytorch / test
 
       - name: Report CI completed to pytorch/pytorch (nightly)
         # event-type: nightly only applies to the actual nightly (schedule)
